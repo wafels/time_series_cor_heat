@@ -6,6 +6,7 @@ from stingray import Powerspectrum
 from stingray.utils import create_window
 
 from astropy.modeling import models
+from astropy.modeling.fitting import _fitter_to_model_params
 
 
 # Amount of time the CCD is exposed in seconds
@@ -72,22 +73,57 @@ g = models.Gaussian1D()
 # Power law plus constant plus Gaussian
 plcg = plc + g
 
+
+
+
+
 # parameters for fake data.
 alpha = 2.0
 amplitude = 5.0
 white_noise = 2.0
+true_parameters = [amplitude, alpha, white_noise]
+freq = np.linspace(0.01, 10.0, int(10.0/0.01))
 
-freq = np.linspace(0.01, 10.0, 10.0/0.01)
 
+# Set the model parameters and create some fake true data
 from astropy.modeling.fitting import _fitter_to_model_params
-
-_fitter_to_model_params(plc, [amplitude, alpha, white_noise])
-
+_fitter_to_model_params(plc, true_parameters)
 psd_shape = plc(freq)
 
+
+# Now randomize the true data
 powers = psd_shape*np.random.chisquare(2, size=psd_shape.shape[0])/2.0
 
-plt.figure(figsize=(12,7))
-plt.loglog(freq, psd_shape, label="power spectrum")
-plt.loglog(freq, powers, linestyle="steps-mid", label="periodogram realization")
+# Make the random data into a Powerspectrum object
+from stingray import Powerspectrum
+ps = Powerspectrum()
+ps.freq = freq
+ps.power = powers
+ps.df = ps.freq[1] - ps.freq[0]
+ps.m = 1
+
+# Define the log-likelihood of the data given the model
+from stingray.modeling import PSDLogLikelihood
+loglike = PSDLogLikelihood(ps.freq, ps.power, plc, m=ps.m)
+loglike(test_pars)
+
+# Parameter estimation
+from stingray.modeling import PSDParEst
+parest = PSDParEst(ps, fitmethod="L-BFGS-B", max_post=False)
+starting_pars = [3.0, 1.0, 2.4]
+res = parest.fit(loglike, starting_pars)
+
+print(true_parameters)
+print(res.p_opt)
+print(res.err)
+print("AIC: " + str(res.aic))
+print("BIC: " + str(res.bic))
+
+res.print_summary(loglike)
+
+plt.figure(figsize=(12, 8))
+plt.loglog(ps.freq, psd_shape, label="true power spectrum", lw=3)
+plt.loglog(ps.freq, ps.power, label="simulated data")
+plt.loglog(ps.freq, res.mfit, label="best fit", lw=3)
 plt.legend()
+plt.show()
