@@ -1,6 +1,7 @@
 import numpy as np
 from astropy.modeling import Fittable1DModel, Parameter
 
+FLOAT_EPSILON = float(np.finfo(np.float32).tiny)
 
 class LogGaussian1D(Fittable1DModel):
     """
@@ -157,4 +158,104 @@ class LogGaussian1D(Fittable1DModel):
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return {'mean': inputs_unit['x'],
                 'stddev': inputs_unit['x'],
+                'amplitude': outputs_unit['y']}
+
+
+class LogLorentz1D(Fittable1DModel):
+    """
+    One dimensional log-Lorentzian model.
+
+    Parameters
+    ----------
+    amplitude : float
+        Peak value
+    log_x_0 : float
+        Position of the peak in log space.
+    fwhm : float
+        Full width at half maximum
+
+    See Also
+    --------
+    Gaussian1D, Box1D, RickerWavelet1D
+
+    Notes
+    -----
+    Model formula:
+
+    .. math::
+
+        f(x) = \\frac{A \\gamma^{2}}{\\gamma^{2} + \\left(\ln(x) - ln(x_{0})\\right)^{2}}
+
+    Examples
+    --------
+    .. plot::
+        :include-source:
+
+        import numpy as np
+        import matplotlib.pyplot as plt
+
+        from astropy.modeling.models import Lorentz1D
+
+        plt.figure()
+        s1 = Lorentz1D()
+        r = np.arange(-5, 5, .01)
+
+        for factor in range(1, 4):
+            s1.amplitude = factor
+            plt.plot(r, s1(r), color=str(0.25 * factor), lw=2)
+
+        plt.axis([-5, 5, -1, 4])
+        plt.show()
+    """
+
+    amplitude = Parameter(default=1)
+    log_x_0 = Parameter(default=0)
+    fwhm = Parameter(default=1)
+
+    @staticmethod
+    def evaluate(x, amplitude, log_x_0, fwhm):
+        """One dimensional Lorentzian model function"""
+
+        return (amplitude * ((fwhm / 2.) ** 2) / ((np.log(x) - log_x_0) ** 2 +
+                                                  (fwhm / 2.) ** 2))
+
+    @staticmethod
+    def fit_deriv(x, amplitude, log_x_0, fwhm):
+        """One dimensional Lorentzian model derivative with respect to parameters"""
+        log_x = np.log(x)
+
+        d_amplitude = fwhm ** 2 / (fwhm ** 2 + (log_x - log_x_0) ** 2)
+        d_log_x_0 = (amplitude * d_amplitude * (2 * log_x - 2 * log_x_0) /
+                    (fwhm ** 2 + (log_x - log_x_0) ** 2))
+        d_fwhm = 2 * amplitude * d_amplitude / fwhm * (1 - d_amplitude)
+        return [d_amplitude, d_log_x_0, d_fwhm]
+
+    def bounding_box(self, factor=25):
+        """Tuple defining the default ``bounding_box`` limits,
+        ``(x_low, x_high)``.
+
+        Parameters
+        ----------
+        factor : float
+            The multiple of FWHM used to define the limits.
+            Default is chosen to include most (99%) of the
+            area under the curve, while still showing the
+            central feature of interest.
+
+        """
+        log_x_0 = self.log_x_0
+        dx = factor * self.fwhm
+
+        return log_x_0 - dx, log_x_0 + dx
+
+    @property
+    def input_units(self):
+        if self.log_x_0.unit is None:
+            return None
+        else:
+            return {'x': self.log_x_0.unit}
+
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
+        return {'x_0': inputs_unit['x'],
+                'fwhm': inputs_unit['x'],
                 'amplitude': outputs_unit['y']}
