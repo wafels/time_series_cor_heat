@@ -5,6 +5,8 @@ from stingray import Powerspectrum
 from stingray.modeling import PSDLogLikelihood
 from stingray.modeling import PSDParEst
 
+import astropy.units as u
+from astropy.time import Time
 from astropy.modeling import models
 from astropy.modeling.fitting import _fitter_to_model_params
 from spectral_models import LogLorentz1D
@@ -101,10 +103,13 @@ class SaveParameters:
         self._save_basic_information(self, file_path)
 
 
-nx = 10
-ny = 11
+nx = 50
+ny = 51
 model_name = 'pl_c_ll'
 sp = SaveParameters(nx, ny, observation_model, parameter_names=['amplitude', 'alpha', 'white_noise', 'll_amplitude', 'll_log_x_0', 'll_fwhm'])
+z = []
+print('For loop processing of {:n} spectra'.format(nx*ny))
+t_start = Time.now()
 for i in range(0, nx):
     for j in range(0, ny):
         # This section will be replaced with a section that reads observed power spectra
@@ -135,7 +140,11 @@ for i in range(0, nx):
         starting_pars = [amplitude, alpha, white_noise, ll_amplitude, ll_log_x_0, ll_fwhm]
 
         # Do the fit and store the results
-        sp.store(i, j, parameter_estimate.fit(loglike, starting_pars))
+        z.append(parameter_estimate.fit(loglike, starting_pars))
+
+
+t_end = Time.now()
+print('Time taken ', (t_end-t_start).to(u.s))
 
 # Save the results
 #sp.save('/Users/Desktop/')

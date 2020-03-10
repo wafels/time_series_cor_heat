@@ -5,6 +5,8 @@ from stingray import Powerspectrum
 from stingray.modeling import PSDLogLikelihood
 from stingray.modeling import PSDParEst
 
+import astropy.units as u
+from astropy.time import Time
 from astropy.modeling import models
 from astropy.modeling.fitting import _fitter_to_model_params
 from spectral_models import LogLorentz1D
@@ -53,7 +55,8 @@ ll_fwhm = np.log(1.01)
 # True parameters
 true_parameters = [amplitude, alpha, white_noise, ll_amplitude, ll_log_x_0, ll_fwhm]
 #true_parameters = [ll_amplitude, ll_log_x_0, ll_fwhm]
-
+nx = 50
+ny = 51
 
 class SaveParameters:
     """
@@ -104,16 +107,36 @@ class SaveParameters:
         self._save_basic_information(self, file_path)
 
 
-def dask_fit_fourier(spectrum):
+def dask_fit_fourier(powers):
     """
     Fits a model to the spectrum
     :param spectrum:
     :return:
     """
 
+    # Make the random data into a Powerspectrum object
+    ps = Powerspectrum()
+    ps.freq = freq
+    ps.power = powers
+    ps.df = ps.freq[1] - ps.freq[0]
+    ps.m = 1
+
+    # Define the log-likelihood of the data given the model
+    loglike = PSDLogLikelihood(ps.freq, ps.power, observation_model, m=ps.m)
+
+    # Parameter estimation object
+    parameter_estimate = PSDParEst(ps, fitmethod="L-BFGS-B", max_post=False)
+
+    # Estimate the starting parameters - will be replaced with a function
+    # starting_parameters = starting_parameter_selector(model_name)
+    starting_pars = [amplitude, alpha, white_noise, ll_amplitude, ll_log_x_0, ll_fwhm]
+
+    return parameter_estimate.fit(loglike, starting_pars)
+
 
 # Create an array of Fourier powers
-spectra = []
+powers = []
+t_start = Time.now()
 for i in range(0, nx):
     for j in range(0, ny):
         # This section will be replaced with a section that reads observed power spectra
@@ -124,14 +147,17 @@ for i in range(0, nx):
         psd_shape = observation_model(freq)
 
         # Now randomize the true data and store it in an iterable
-        spectra.append(psd_shape * np.random.chisquare(2, size=psd_shape.shape[0]) / 2.0)
+        powers.append(psd_shape * np.random.chisquare(2, size=psd_shape.shape[0]) / 2.0)
 
 
 # Use Dask to to fit the spectra
-results = client.map(dask_fit_fourier, spectra)
+print('Dask processing of {:n} spectra'.format(nx*ny))
+results = client.map(dask_fit_fourier, powers)
+z = client.gather(results)
+t_end = Time.now()
+print('Time taken ', (t_end-t_start).to(u.s))
 
-
-
+"""
 model_name = 'pl_c_ll'
 sp = SaveParameters(nx, ny, observation_model, parameter_names=['amplitude', 'alpha', 'white_noise', 'll_amplitude', 'll_log_x_0', 'll_fwhm'])
 for i in range(0, nx):
@@ -168,4 +194,4 @@ for i in range(0, nx):
 
 # Save the results
 #sp.save('/Users/Desktop/')
-
+"""
