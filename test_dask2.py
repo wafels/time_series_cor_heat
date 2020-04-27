@@ -38,6 +38,18 @@ observation_model.name = 'log_lorentz'
 observation_model = power_law + constant + log_lorentz
 observation_model.name = 'pl_c_ll'
 
+observation_models = list(3)
+
+observation_models[0] = power_law + constant
+observation_models[0].name = 'pl_c'
+
+observation_models[1] = power_law + constant + log_lorentz
+observation_models[1].name = 'pl_c_ll'
+
+observation_models[2] = power_law + constant + log_normal
+observation_models[2].name = 'pl_c_ln'
+
+
 
 
 # parameters for fake data.
@@ -119,7 +131,7 @@ if __name__ == '__main__':
     # Now go through all the results and save out the results
     n_parameters = len(z[0].p_opt)
     p_opt = np.zeros((nx, ny, n_parameters))
-    err = np.zeros_like(values)
+    err = np.zeros_like(p_opt)
     aic = np.zeros((nx, ny))
     bic = np.zeros_like(aic)
     result = np.zeros_like(aic)
@@ -138,10 +150,9 @@ if __name__ == '__main__':
     # If they are referred via a dictionary it is easier to automate their saving
     output = {'p_opt': p_opt, 'err': err, 'aic': aic, 'bic': bic, 'result': result}
 
-    # Save the arrays
-    directory = os.path.expanduser(project_data)
+    # Save the arrays - to be analyzed by other programs
     for output_type in list(output.keys()):
-        filename = '{:s}_{:s}'.format(observation_model.name, output_type, '.npz')
+        filename = '{:s}.{:s}.npz'.format(observation_model.name, output_type)
         filepath = os.path.join(directory, filename)
         print('Saving ' + filepath)
         np.savez(filepath, output[output_type])
