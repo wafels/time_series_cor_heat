@@ -54,8 +54,8 @@ observation_models[1].name = 'pl_c_ll'
 freq = np.linspace(0.01, 10.0, int(10.0/0.01))
 
 # Size of the array
-nx = 50
-ny = 51
+nx = 10
+ny = 11
 
 # Power law
 alpha = 2.0
@@ -94,7 +94,38 @@ def create_simulated_data(nx, ny, observation_model, true_parameters, freq):
 powers = create_simulated_data(nx, ny, observation_models[0], true_parameters, freq)
 
 
-# TODO: complete this initial parameter estimator
+# Assume a power law in power spectrum - Use a Bayesian marginal distribution
+# to calculate the probability that the power spectrum has a power law index
+# 'n'.
+def bayeslogprob(f, I, n, m):
+    """
+    Return the log of the marginalized Bayesian posterior of an observed
+    Fourier power spectra fit with a model spectrum Af^{-n}, where A is a
+    normalization constant, f is a normalized frequency, and n is the power law
+    index at which the probability is calculated. The marginal probability is
+    calculated using a prior p(A) ~ A^{m}.
+    The function returns log[p(n)] give.  The most likely value of 'n' is the
+    maximum value of p(n).
+    f : normalized frequencies
+    I : Fourier power spectrum
+    n : power law index of the power spectrum
+    m : power law index of the prior p(A) ~ A^{m}
+    """
+    N = len(f)
+    term1 = n * np.sum(np.log(f))
+    term2 = (N - m - 1) * np.log(np.sum(I * f ** n))
+    return term1 - term2
+
+
+# Find the most likely power law index given a prior on the amplitude of the
+# power spectrum.
+def most_probable_power_law_index(f, I, m, n):
+    blp = np.zeros_like(n)
+    for inn, nn in enumerate(n):
+        blp[inn] = bayeslogprob(f, I, nn, m)
+    return n[np.argmax(blp)]
+
+
 def initial_parameter_estimate_pl_c(f, p):
     """
     Estimate of the power law + constant observation model
@@ -110,7 +141,23 @@ def initial_parameter_estimate_pl_c(f, p):
     ------
 
     """
-    return [amplitude, alpha, white_noise]
+    nf = len(f)
+
+    # Use the low frequency part of the spectrum
+    ar = [0, int(0.025*nf)]
+    amplitude_estimate = np.exp(np.mean(np.log(p[ar[0]:ar[1]])))
+
+    # Use the high frequency part of the spectrum
+    br = [int(0.975 * nf), nf - 1]
+    background_estimate = np.exp(np.mean(np.log(p[br[0]:br[1]])))
+
+    # the bit in-between the low and high end of the spectrum
+    ir = [ar[1], br[0]]
+    index_estimate = most_probable_power_law_index(f[ir[0]:ir[1]],
+                                                   p[ir[0]:ir[1]],
+                                                   0.0, np.arange(0.0, 4.0, 0.01))
+
+    return [amplitude_estimate, index_estimate, background_estimate]
 
 
 def dask_fit_fourier_pl_c(powers):
@@ -149,8 +196,15 @@ def dask_fit_fourier_pl_c(powers):
 def dask_fit_fourier(powers):
     """
     Fits a model to the spectrum
-    :param spectrum:
-    :return:
+
+    Parameters
+    ----------
+    powers:
+
+
+    Returns
+    -------
+
     """
 
     # Make the random data into a Powerspectrum object
@@ -183,6 +237,9 @@ if __name__ == '__main__':
     client = distributed.Client()
     print('Dask processing of {:n} spectra'.format(nx*ny))
 
+    #
+    observation_model_name = observation_models[0].name
+
     # Get the start time
     t_start = Time.now()
 
@@ -199,122 +256,46 @@ if __name__ == '__main__':
     # For short hand call n_parameters 'n' instead
     # 0 : n-1 : parameter values
     # n : 2n-1 : error in parameter values
-    # 2n : AIC
+    # 2n + 0 : AIC
     # 2n + 1 : BIC
     # 2n + 2 : result
-    # TODO: put all the output into the same three dimensional array
     n_parameters = len(z[0].p_opt)
-    p_opt = np.zeros((nx, ny, n_parameters))
-    err = np.zeros_like(p_opt)
-    aic = np.zeros((nx, ny))
-    bic = np.zeros_like(aic)
-    result = np.zeros_like(aic)
+    n_outputs = 2 * n_parameters + 3
+    outputs = np.zeros((nx, ny, n_outputs))
 
-    # Turn the results in to easier to use arrays
+    # Turn the results into an easier to use array
     for i in range(0, nx):
         for j in range(0, ny):
             index = j + i*ny
             r = z[index]
-            p_opt[i, j, :] = r.p_opt[:]
-            err[i, j, :] = r.err[:]
-            aic[i, j] = r.aic
-            bic[i, j] = r.bic
-            result[i, j] = r.result
+            outputs[i, j, 0:n_parameters] = r.p_opt[:]
+            outputs[i, j, n_parameters:2*n_parameters] = r.err[:]
+            outputs[i, j, 2 * n_parameters + 0] = r.aic
+            outputs[i, j, 2 * n_parameters + 1] = r.bic
+            outputs[i, j, 2 * n_parameters + 2] = r.result
 
-    # TODO: write out all the output names in the same order as they are stored in the array
-    # If they are referred via a dictionary it is easier to automate their saving
-    output = {'p_opt': p_opt, 'err': err, 'aic': aic, 'bic': bic, 'result': result}
+    filename = '{:s}.outputs.npz'.format(observation_model_name)
+    filepath = os.path.join(directory, filename)
+    print('Saving ' + filepath)
+    np.savez(filepath, outputs)
 
-    # Save the arrays - to be analyzed by other programs
-    for output_type in list(output.keys()):
-        filename = '{:s}.{:s}.npz'.format(observation_models[0].name, output_type)
-        filepath = os.path.join(directory, filename)
-        print('Saving ' + filepath)
-        np.savez(filepath, output[output_type])
+    # Create a list the names of the output in the same order that they appear in the outputs
+    output_names = list()
+    param_names = observation_models[0].param_names
+    fixed = observation_models[0].fixed
+    for name in param_names:
+        if not fixed[name]:
+            output_names.append(name)
+    for name in param_names:
+        if not fixed[name]:
+            output_names.append('err_{:s}'.format(name))
+    output_names.append('aic')
+    output_names.append('bic')
+    output_names.append('result')
 
-
-"""
-
-class SaveParameters:
-    #Object for the storage of the fitting results
-    def __init__(self, nx, ny, observation_model, parameter_names=None):
-        self._nx = nx
-        self._ny = ny
-        self._observation_model = observation_model
-        self._model_name = self._observation_model.name
-        if parameter_names is None:
-            self._parameter_names = self._observation_model.param_names
-        else:
-            self._parameter_names = parameter_names
-        self._np = len(self._parameter_names)
-        self.p_opt = np.zeros((self._nx, self._ny, self._np))
-        self.err = np.zeros_like(self.p_opt)
-        self.aic = np.zeros((self._nx, self._ny))
-        self.bic = np.zeros_like(self.aic)
-        self.result = np.zeros_like(self.aic)
-
-    def store(self, i, j, res):
-        self.p_opt[i, j, :] = res.p_opt[:]
-        self.err[i, j, :] = res.err[:]
-        self.aic[i, j] = res.aic
-        self.bic[i, j] = res.bic
-        self.result[i, j] = res.result
-
-    @property
-    def observation_model(self):
-        return self._observation_model
-
-    @property
-    def model_name(self):
-        return self._model_name
-
-    @property
-    def parameter_names(self):
-        return self._parameter_names
-
-    def _filename(self):
-        return self.model_name
-
-    def _save_basic_information(self, file_path):
-        f = os.path.join(file_path, self._filename)
-
-    def save(self, file_path, replace=False):
-        self._save_basic_information(self, file_path)
-
-model_name = 'pl_c_ll'
-sp = SaveParameters(nx, ny, observation_model, parameter_names=['amplitude', 'alpha', 'white_noise', 'll_amplitude', 'll_log_x_0', 'll_fwhm'])
-for i in range(0, nx):
-    for j in range(0, ny):
-        # This section will be replaced with a section that reads observed power spectra
-        # Set the model parameters
-        _fitter_to_model_params(observation_model, true_parameters)
-
-        # Create the true data
-        psd_shape = observation_model(freq)
-
-        # Now randomize the true data
-        powers = psd_shape * np.random.chisquare(2, size=psd_shape.shape[0]) / 2.0
-
-        # Make the random data into a Powerspectrum object
-        ps = Powerspectrum()
-        ps.freq = freq
-        ps.power = powers
-        ps.df = ps.freq[1] - ps.freq[0]
-        ps.m = 1
-
-        # Define the log-likelihood of the data given the model
-        loglike = PSDLogLikelihood(ps.freq, ps.power, observation_model, m=ps.m)
-
-        # Parameter estimation object
-        parameter_estimate = PSDParEst(ps, fitmethod="L-BFGS-B", max_post=False)
-
-        # Estimate the starting parameters - will be replaced with a function
-        # starting_parameters = starting_parameter_selector(model_name)
-        starting_pars = [amplitude, alpha, white_noise, ll_amplitude, ll_log_x_0, ll_fwhm]
-
-        # Do the fit and store the results
-        sp.store(i, j, parameter_estimate.fit(loglike, starting_pars))
-
-# Save the results
-#sp.save('/Users/Desktop/')
-"""
+    filename = '{:s}.output_names.txt'.format(observation_model_name)
+    filepath = os.path.join(directory, filename)
+    print('Saving ' + filepath)
+    with open(filepath, 'w') as f:
+        for output_name in output_names:
+            f.write(f"{output_name}\n")
