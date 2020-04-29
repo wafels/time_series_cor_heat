@@ -126,6 +126,43 @@ def most_probable_power_law_index(f, I, m, n):
     return n[np.argmax(blp)]
 
 
+def _frequency_range_indices(f, frequency_limits):
+    return [np.argmin(np.abs(f-frequency_limits[0])),
+            np.argmin(np.abs(f-frequency_limits[1]))]
+
+
+def range_index_estimate(f, frequency_limits=None):
+    nf = len(f)
+    if frequency_limits is None:
+        ii = [int(0.025*nf), int(0.975*nf)]
+    else:
+        ii = _frequency_range_indices(f, frequency_limits)
+    return ii
+
+
+def range_amplitude_estimate(f, frequency_limits=None):
+    nf = len(f)
+    if frequency_limits is None:
+        ii = [0, int(0.025*nf)]
+    else:
+        ii = _frequency_range_indices(f, frequency_limits)
+    return ii
+
+
+def range_background_estimate(f, frequency_limits=None):
+    nf = len(f)
+    if frequency_limits is None:
+        ii = [int(0.975 * nf), nf]
+    else:
+        ii = _frequency_range_indices(f, frequency_limits)
+    return ii
+
+
+ir = range_index_estimate(freq)
+ar = range_index_estimate(freq)
+br = range_background_estimate(freq)
+
+
 def initial_parameter_estimate_pl_c(f, p):
     """
     Estimate of the power law + constant observation model
@@ -141,21 +178,16 @@ def initial_parameter_estimate_pl_c(f, p):
     ------
 
     """
-    nf = len(f)
-
-    # Use the low frequency part of the spectrum to estimate the amplitude of the power spectrum.
-    ar = [0, int(0.025*nf)]
-    amplitude_estimate = np.exp(np.mean(np.log(p[ar[0]:ar[1]])))
-
-    # Use the high frequency part of the spectrum to estimate the constant value.
-    br = [int(0.975 * nf), nf - 1]
-    background_estimate = np.exp(np.mean(np.log(p[br[0]:br[1]])))
-
     # The bit in-between the low and high end of the spectrum to estimate the power law index.
-    ir = [ar[1], br[0]]
     index_estimate = most_probable_power_law_index(f[ir[0]:ir[1]],
                                                    p[ir[0]:ir[1]],
-                                                   0.0, np.arange(0.0, 4.0, 0.01))
+                                                   0.0, np.arange(0.0, 4.0, 0.1))
+
+    # Use the low-frequency end to estimate the amplitude, normalizing for the first frequency
+    amplitude_estimate = np.mean(p[ar[0]:ar[1]]) * (f[0] ** -index_estimate)
+
+    # Use the high frequency part of the spectrum to estimate the constant value.
+    background_estimate = np.exp(np.mean(np.log(p[br[0]:br[1]])))
 
     return [amplitude_estimate, index_estimate, background_estimate]
 
@@ -189,6 +221,7 @@ def dask_fit_fourier_pl_c(powers):
     # Estimate the starting parameters - will be replaced with a function
     # starting_parameters = starting_parameter_selector(model_name)
     initial_parameter_estimate = initial_parameter_estimate_pl_c(ps.freq, ps.power)
+    print(initial_parameter_estimate)
 
     return parameter_estimate.fit(loglike, initial_parameter_estimate)
 
@@ -296,6 +329,6 @@ if __name__ == '__main__':
     filename = '{:s}.output_names.txt'.format(observation_model_name)
     filepath = os.path.join(directory, filename)
     print('Saving ' + filepath)
-    with open(filepath, 'w') as f:
+    with open(filepath, 'w') as file_out:
         for output_name in output_names:
-            f.write(f"{output_name}\n")
+            file_out.write(f"{output_name}\n")
