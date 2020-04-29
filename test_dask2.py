@@ -143,15 +143,15 @@ def initial_parameter_estimate_pl_c(f, p):
     """
     nf = len(f)
 
-    # Use the low frequency part of the spectrum
+    # Use the low frequency part of the spectrum to estimate the amplitude of the power spectrum.
     ar = [0, int(0.025*nf)]
     amplitude_estimate = np.exp(np.mean(np.log(p[ar[0]:ar[1]])))
 
-    # Use the high frequency part of the spectrum
+    # Use the high frequency part of the spectrum to estimate the constant value.
     br = [int(0.975 * nf), nf - 1]
     background_estimate = np.exp(np.mean(np.log(p[br[0]:br[1]])))
 
-    # the bit in-between the low and high end of the spectrum
+    # The bit in-between the low and high end of the spectrum to estimate the power law index.
     ir = [ar[1], br[0]]
     index_estimate = most_probable_power_law_index(f[ir[0]:ir[1]],
                                                    p[ir[0]:ir[1]],
