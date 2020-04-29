@@ -221,7 +221,6 @@ def dask_fit_fourier_pl_c(powers):
     # Estimate the starting parameters - will be replaced with a function
     # starting_parameters = starting_parameter_selector(model_name)
     initial_parameter_estimate = initial_parameter_estimate_pl_c(ps.freq, ps.power)
-    print(initial_parameter_estimate)
 
     return parameter_estimate.fit(loglike, initial_parameter_estimate)
 
