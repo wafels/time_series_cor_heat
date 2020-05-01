@@ -1,6 +1,7 @@
 import os
 import numpy as np
-from matplotlib import pyplot as plt
+
+import distributed
 
 from stingray import Powerspectrum
 from stingray.modeling import PSDLogLikelihood
@@ -11,8 +12,7 @@ from astropy.time import Time
 from astropy.modeling import models
 from astropy.modeling.fitting import _fitter_to_model_params
 from spectral_models import LogLorentz1D
-
-import distributed
+from spectral_model_parameter_estimators import InitialParameterEstimatePlC
 
 # Output
 directory = os.path.expanduser('~/Data/ts/project_data/test_dask2_output')
@@ -55,10 +55,10 @@ freq = np.linspace(0.01, 10.0, int(10.0/0.01))
 
 # Size of the array
 nx = 10
-ny = 11
+ny = 100
 
 # Power law
-alpha = 2.0
+alpha = np.linspace(0, 5, nx)
 amplitude = 5.0
 
 # Constant
@@ -74,122 +74,24 @@ true_parameters = [amplitude, alpha, white_noise]
 
 
 # Create a list of simulated Fourier powers
-# TODO: add the option to create a known range of power law indices, the most important parameter for this study.
-def create_simulated_data(nx, ny, observation_model, true_parameters, freq):
-    powers = []
+def create_simulated_data(nx, ny, observation_model, model_parameters, frequencies):
+    p = []
     for i in range(0, nx):
+        this_alpha = model_parameters[1][i]
         for j in range(0, ny):
             # This section will be replaced with a section that reads observed power spectra
             # Set the model parameters
-            _fitter_to_model_params(observation_model, true_parameters)
-
+            _fitter_to_model_params(observation_model,
+                                    [model_parameters[0], this_alpha, model_parameters[2]])
             # Create the true data
-            psd_shape = observation_model(freq)
+            psd_shape = observation_model(frequencies)
 
             # Now randomize the true data and store it in an iterable
-            powers.append(psd_shape * np.random.chisquare(2, size=psd_shape.shape[0]) / 2.0)
-    return powers
+            p.append(psd_shape * np.random.chisquare(2, size=psd_shape.shape[0]) / 2.0)
+    return p
 
 
 powers = create_simulated_data(nx, ny, observation_models[0], true_parameters, freq)
-
-
-# Assume a power law in power spectrum - Use a Bayesian marginal distribution
-# to calculate the probability that the power spectrum has a power law index
-# 'n'.
-def bayeslogprob(f, I, n, m):
-    """
-    Return the log of the marginalized Bayesian posterior of an observed
-    Fourier power spectra fit with a model spectrum Af^{-n}, where A is a
-    normalization constant, f is a normalized frequency, and n is the power law
-    index at which the probability is calculated. The marginal probability is
-    calculated using a prior p(A) ~ A^{m}.
-    The function returns log[p(n)] give.  The most likely value of 'n' is the
-    maximum value of p(n).
-    f : normalized frequencies
-    I : Fourier power spectrum
-    n : power law index of the power spectrum
-    m : power law index of the prior p(A) ~ A^{m}
-    """
-    N = len(f)
-    term1 = n * np.sum(np.log(f))
-    term2 = (N - m - 1) * np.log(np.sum(I * f ** n))
-    return term1 - term2
-
-
-# Find the most likely power law index given a prior on the amplitude of the
-# power spectrum.
-def most_probable_power_law_index(f, I, m, n):
-    blp = np.zeros_like(n)
-    for inn, nn in enumerate(n):
-        blp[inn] = bayeslogprob(f, I, nn, m)
-    return n[np.argmax(blp)]
-
-
-def _frequency_range_indices(f, frequency_limits):
-    return [np.argmin(np.abs(f-frequency_limits[0])),
-            np.argmin(np.abs(f-frequency_limits[1]))]
-
-
-def range_index_estimate(f, frequency_limits=None):
-    nf = len(f)
-    if frequency_limits is None:
-        ii = [int(0.025*nf), int(0.975*nf)]
-    else:
-        ii = _frequency_range_indices(f, frequency_limits)
-    return ii
-
-
-def range_amplitude_estimate(f, frequency_limits=None):
-    nf = len(f)
-    if frequency_limits is None:
-        ii = [0, int(0.025*nf)]
-    else:
-        ii = _frequency_range_indices(f, frequency_limits)
-    return ii
-
-
-def range_background_estimate(f, frequency_limits=None):
-    nf = len(f)
-    if frequency_limits is None:
-        ii = [int(0.975 * nf), nf]
-    else:
-        ii = _frequency_range_indices(f, frequency_limits)
-    return ii
-
-
-ir = range_index_estimate(freq)
-ar = range_index_estimate(freq)
-br = range_background_estimate(freq)
-
-
-def initial_parameter_estimate_pl_c(f, p):
-    """
-    Estimate of the power law + constant observation model
-
-    Parameters
-    ----------
-    f :
-
-
-    p :
-
-    Return
-    ------
-
-    """
-    # The bit in-between the low and high end of the spectrum to estimate the power law index.
-    index_estimate = most_probable_power_law_index(f[ir[0]:ir[1]],
-                                                   p[ir[0]:ir[1]],
-                                                   0.0, np.arange(0.0, 4.0, 0.1))
-
-    # Use the low-frequency end to estimate the amplitude, normalizing for the first frequency
-    amplitude_estimate = np.mean(p[ar[0]:ar[1]]) * (f[0] ** -index_estimate)
-
-    # Use the high frequency part of the spectrum to estimate the constant value.
-    background_estimate = np.exp(np.mean(np.log(p[br[0]:br[1]])))
-
-    return [amplitude_estimate, index_estimate, background_estimate]
 
 
 def dask_fit_fourier_pl_c(powers):
@@ -220,43 +122,9 @@ def dask_fit_fourier_pl_c(powers):
 
     # Estimate the starting parameters - will be replaced with a function
     # starting_parameters = starting_parameter_selector(model_name)
-    initial_parameter_estimate = initial_parameter_estimate_pl_c(ps.freq, ps.power)
+    ipe = InitialParameterEstimatePlC(ps.freq, ps.power)
 
-    return parameter_estimate.fit(loglike, initial_parameter_estimate)
-
-
-def dask_fit_fourier(powers):
-    """
-    Fits a model to the spectrum
-
-    Parameters
-    ----------
-    powers:
-
-
-    Returns
-    -------
-
-    """
-
-    # Make the random data into a Powerspectrum object
-    ps = Powerspectrum()
-    ps.freq = freq
-    ps.power = powers
-    ps.df = ps.freq[1] - ps.freq[0]
-    ps.m = 1
-
-    # Define the log-likelihood of the data given the model
-    loglike = PSDLogLikelihood(ps.freq, ps.power, observation_model, m=ps.m)
-
-    # Parameter estimation object
-    parameter_estimate = PSDParEst(ps, fitmethod="L-BFGS-B", max_post=False)
-
-    # Estimate the starting parameters - will be replaced with a function
-    # starting_parameters = starting_parameter_selector(model_name)
-    starting_pars = [amplitude, alpha, white_noise, ll_amplitude, ll_log_x_0, ll_fwhm]
-
-    return parameter_estimate.fit(loglike, starting_pars)
+    return parameter_estimate.fit(loglike, [ipe.amplitude, ipe.index, ipe.background])
 
 
 # TODO: Create plots of the output
@@ -331,3 +199,36 @@ if __name__ == '__main__':
     with open(filepath, 'w') as file_out:
         for output_name in output_names:
             file_out.write(f"{output_name}\n")
+
+
+""""
+def dask_fit_fourier(powers):
+    #Fits a model to the spectrum
+
+    #    Parameters
+    #----------
+    #powers:
+
+
+    #Returns
+    #-------
+
+    # Make the random data into a Powerspectrum object
+    ps = Powerspectrum()
+    ps.freq = freq
+    ps.power = powers
+    ps.df = ps.freq[1] - ps.freq[0]
+    ps.m = 1
+
+    # Define the log-likelihood of the data given the model
+    loglike = PSDLogLikelihood(ps.freq, ps.power, observation_model, m=ps.m)
+
+    # Parameter estimation object
+    parameter_estimate = PSDParEst(ps, fitmethod="L-BFGS-B", max_post=False)
+
+    # Estimate the starting parameters - will be replaced with a function
+    # starting_parameters = starting_parameter_selector(model_name)
+    starting_pars = [amplitude, alpha, white_noise, ll_amplitude, ll_log_x_0, ll_fwhm]
+
+    return parameter_estimate.fit(loglike, starting_pars)
+"""
