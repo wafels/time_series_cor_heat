@@ -120,8 +120,7 @@ def dask_fit_fourier_pl_c(powers):
     # Parameter estimation object
     parameter_estimate = PSDParEst(ps, fitmethod="L-BFGS-B", max_post=False)
 
-    # Estimate the starting parameters - will be replaced with a function
-    # starting_parameters = starting_parameter_selector(model_name)
+    # Estimate the starting parameters
     ipe = InitialParameterEstimatePlC(ps.freq, ps.power)
 
     return parameter_estimate.fit(loglike, [ipe.amplitude, ipe.index, ipe.background])
