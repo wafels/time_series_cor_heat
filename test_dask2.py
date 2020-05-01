@@ -12,7 +12,7 @@ from astropy.time import Time
 from astropy.modeling import models
 from astropy.modeling.fitting import _fitter_to_model_params
 from spectral_models import LogLorentz1D
-from spectral_model_parameter_estimators import InitialParameterEstimatePlC
+from spectral_model_parameter_estimators import power_law_index_bounds, InitialParameterEstimatePlC
 
 # Output
 directory = os.path.expanduser('~/Data/ts/project_data/test_dask2_output')
@@ -54,11 +54,11 @@ observation_models[1].name = 'pl_c_ll'
 freq = np.linspace(0.01, 10.0, int(10.0/0.01))
 
 # Size of the array
-nx = 10
-ny = 100
+nx = 50
+ny = 60
 
 # Power law
-alpha = np.linspace(0, 5, nx)
+alpha = np.linspace(2, 2, nx)
 amplitude = 5.0
 
 # Constant
@@ -122,7 +122,6 @@ def dask_fit_fourier_pl_c(powers):
 
     # Estimate the starting parameters
     ipe = InitialParameterEstimatePlC(ps.freq, ps.power)
-
     return parameter_estimate.fit(loglike, [ipe.amplitude, ipe.index, ipe.background])
 
 

@@ -1,5 +1,8 @@
 import numpy as np
 
+# Range of power law indices permitted.
+power_law_index_bounds = (0, 4)
+
 
 # Assume a power law in power spectrum - Use a Bayesian marginal distribution
 # to calculate the probability that the power spectrum has a power law index
@@ -66,19 +69,31 @@ def range_background_estimate(f, frequency_limits=None):
 
 
 class InitialParameterEstimatePlC(object):
-    def __init__(self, f, p, ir=None, ar=None, br=None, bayes_search=(0, np.arange(0.0, 4.0, 0.1))):
+    def __init__(self, f, p, ir=None, ar=None, br=None,
+                 bayes_search=(0, np.linspace(power_law_index_bounds[0], power_law_index_bounds[1], 50))):
         """
-        Estimate of the power law + constant observation model
+        Estimate of three parameters of the power law + constant observation model - the amplitude,
+        the power law index, and the background value.
 
         Parameters
         ----------
         f :
-
+            Positive frequencies of the power law spectrum
 
         p :
+            Power at the frequencies
 
-        Return
-        ------
+        ir :
+
+
+        ar :
+
+
+        br :
+
+
+        bayes_search : ~tuple
+
 
         """
         self.f = f
@@ -98,7 +113,7 @@ class InitialParameterEstimatePlC(object):
                                                     bayes_search[0], bayes_search[1])
 
         # Use the low-frequency end to estimate the amplitude, normalizing for the first frequency
-        self._amplitude = np.mean(self.p[self._ar[0]:self._ar[1]]) * (self.f[0] ** -self.index)
+        self._amplitude = np.mean(self.p[self._ar[0]:self._ar[1]]) * (self.f[0] ** -self._index)
 
         # Use the high frequency part of the spectrum to estimate the constant value.
         self._background = np.exp(np.mean(np.log(self.p[self._br[0]:self._br[1]])))
