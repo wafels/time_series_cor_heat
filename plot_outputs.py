@@ -2,7 +2,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-
+from matplotlib import rc
+rc('text', usetex=True)
 observation_model_name = 'pl_c'
 
 directory = os.path.expanduser('~/Data/ts/project_data/test_dask2_output')
@@ -29,7 +30,7 @@ with open(filepath) as f:
 
 class SummaryStatistics:
     """Some simple descriptive statistics of a 1-D input array"""
-    def __init__(self, d, ci=(0.68, 0.95), **histogram_kwargs):
+    def __init__(self, d, ci=(0.16, 0.84), **histogram_kwargs):
         # Only work with unmasked data.
         if np.ma.is_masked(d):
             raise ValueError('Unmasked data only')
@@ -45,13 +46,9 @@ class SummaryStatistics:
         self.x = 0.5 * (self.xhist[0:-2] + self.xhist[1:-1])
         self.mode = self.xhist[np.argmax(self.hist)]
         self.std = np.nanstd(self.data)
-        self.cred = {}
+        self.cred = []
         for cilevel in ci:
-            lo = 0.5 * (1.0 - cilevel)
-            hi = 1.0 - lo
-            sorted_data = np.sort(self.data)
-            self.cred[cilevel] = [sorted_data[int(lo * self.n)],
-                                  sorted_data[int(hi * self.n)]]
+            self.cred.append(np.nanquantile(self.data, cilevel))
 
     @property
     def is_all_finite(self):
@@ -67,8 +64,6 @@ for i, output_name in enumerate(output_names):
 
     # Finiteness
     is_not_finite = ~np.isfinite(data)
-
-    # Update the mask
     mask = np.logical_or(mask, is_not_finite)
 
     # Data that exceeds the lower bound is masked out
@@ -77,9 +72,7 @@ for i, output_name in enumerate(output_names):
         lb_mask = np.zeros_like(mask)
     else:
         lb_mask = data < float(lower_bound)
-
-    # Update the mask
-    mask = np.logical_or(is_not_finite, lb_mask)
+    mask = np.logical_or(mask, lb_mask)
 
     # Data that exceeds the upper bound is masked out
     upper_bound = df['upper_bound'][output_name]
@@ -87,10 +80,7 @@ for i, output_name in enumerate(output_names):
         ub_mask = np.zeros_like(mask)
     else:
         ub_mask = data > float(upper_bound)
-
-    # Update the mask
     mask = np.logical_or(mask, ub_mask)
-
 
 # Make the plots
 for i, output_name in enumerate(output_names):
@@ -105,24 +95,31 @@ for i, output_name in enumerate(output_names):
     n_bad = n_samples - n_good
 
     # Summary statistics
-    ss = SummaryStatistics(compressed)
+    ss = SummaryStatistics(compressed, bins=40)
 
     # The variable name is used in the plot instead of the output_name
     # because we use LaTeX in the plots to match with the variables
     # used in the paper.
     variable_name = df['variable_name'][output_name]
 
-    percent_bad_string = "{:3f.1}%%".format(100*n_bad/n_good)
-    title_information = f"{variable_name}\n{n_samples} samples, {n_bad}({n_good})[{percent_bad_string}] bad(good)[%bad]"
+    percent_bad_string = "{:.1f}$\%$".format(100*n_bad/n_good)
+    title_information = f"{variable_name}\n{n_samples} fits, {n_bad} bad({n_good} good)[{percent_bad_string} bad]"
 
     # Histograms
     plt.close('all')
     fig, ax = plt.subplots()
-    n, bins, patches = ax.hist(compressed, nbins=nbins)
+    h = ax.hist(compressed, bins=40)
     plt.xlabel(variable_name)
     plt.ylabel('Number')
     plt.title(f'Histogram of {title_information}')
     plt.grid(linestyle=":")
+    ax.axvline(ss.mean, label='mean ({:.2f})'.format(ss.mean), color='r')
+    ax.axvline(ss.mode, label='mode ({:.2f})'.format(ss.mode), color='k')
+    ax.axvline(ss.median, label='median ({:.2f})'.format(ss.median), color='y')
+    ax.axvline(ss.cred[0], color='r', linestyle=':')
+    ax.axvline(ss.cred[1], label='$\pm1\sigma$ equiv. ({:.2f}$\\rightarrow${:.2f})'.format(ss.cred[0], ss.cred[1]),
+               color='r', linestyle=':')
+    ax.legend()
     filename = 'histogram.{:s}.{:s}.png'.format(observation_model_name, output_name)
     filename = os.path.join(directory, filename)
     plt.savefig(filename)
@@ -131,11 +128,12 @@ for i, output_name in enumerate(output_names):
     plt.close('all')
     fig, ax = plt.subplots()
     im = ax.imshow(data, origin='lower')
+    im.cmap.set_bad('red')
     ax.set_xlabel('solar X')
     ax.set_ylabel('solar Y')
     ax.set_title(f'Spatial distribution {title_information}')
     ax.grid(linestyle=":")
-    fig.colorbar(im, ax=ax)
+    fig.colorbar(im, ax=ax, label=variable_name)
     filename = 'spatial.{:s}.{:s}.png'.format(observation_model_name, output_name)
     filename = os.path.join(directory, filename)
     plt.savefig(filename)
