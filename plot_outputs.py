@@ -102,16 +102,19 @@ for i, output_name in enumerate(output_names):
     # used in the paper.
     variable_name = df['variable_name'][output_name]
 
-    percent_bad_string = "{:.1f}$\%$".format(100*n_bad/n_good)
-    title_information = f"{variable_name}\n{n_samples} fits, {n_bad} bad({n_good} good)[{percent_bad_string} bad]"
+    # Percentage that are bad fits
+    percent_bad_string = "{:.1f}$\%$".format(100*n_bad/n_samples)
+
+    # Information that goes in to every title
+    title_information = f"{variable_name}\n{n_samples} fits, {n_bad} bad, {n_good} good, {percent_bad_string} bad"
 
     # Histograms
     plt.close('all')
     fig, ax = plt.subplots()
     h = ax.hist(compressed, bins=40)
     plt.xlabel(variable_name)
-    plt.ylabel('Number')
-    plt.title(f'Histogram of {title_information}')
+    plt.ylabel('number')
+    plt.title(f'histogram of {title_information}')
     plt.grid(linestyle=":")
     ax.axvline(ss.mean, label='mean ({:.2f})'.format(ss.mean), color='r')
     ax.axvline(ss.mode, label='mode ({:.2f})'.format(ss.mode), color='k')
@@ -131,7 +134,7 @@ for i, output_name in enumerate(output_names):
     im.cmap.set_bad('red')
     ax.set_xlabel('solar X')
     ax.set_ylabel('solar Y')
-    ax.set_title(f'Spatial distribution {title_information}')
+    ax.set_title(f'spatial distribution of {title_information}')
     ax.grid(linestyle=":")
     fig.colorbar(im, ax=ax, label=variable_name)
     filename = 'spatial.{:s}.{:s}.png'.format(observation_model_name, output_name)
