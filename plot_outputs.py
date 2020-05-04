@@ -12,8 +12,8 @@ directory = os.path.expanduser('~/Data/ts/project_data/test_dask2_output')
 # "amplitude_0",None,None,"A_{0}"
 # "alpha_0",0,4,"n"
 filename = '{:s}.outputs_information.csv'.format(observation_model_name)
-filepath = os.path.join(directory, filename)
-df = pd.read_csv(filepath)
+filepath = os.path.join(os.path.expanduser('~/time_series_cor_heat-git/time_series_cor_heat'), filename)
+df = pd.read_csv(filepath, index_col=0)
 df = df.replace({"None": None})
 
 # Load in the data and the output names 
@@ -50,8 +50,8 @@ class SummaryStatistics:
             lo = 0.5 * (1.0 - cilevel)
             hi = 1.0 - lo
             sorted_data = np.sort(self.data)
-            self.cred[cilevel] = [sorted_data[np.rint(lo * self.n)],
-                                  sorted_data[np.rint(hi * self.n)]]
+            self.cred[cilevel] = [sorted_data[int(lo * self.n)],
+                                  sorted_data[int(hi * self.n)]]
 
     @property
     def is_all_finite(self):
@@ -72,21 +72,21 @@ for i, output_name in enumerate(output_names):
     mask = np.logical_or(mask, is_not_finite)
 
     # Data that exceeds the lower bound is masked out
-    lower_bound = float(df['lower_bound'][output_name])
+    lower_bound = df['lower_bound'][output_name]
     if lower_bound is None:
         lb_mask = np.zeros_like(mask)
     else:
-        lb_mask = data < lower_bound
+        lb_mask = data < float(lower_bound)
 
     # Update the mask
     mask = np.logical_or(is_not_finite, lb_mask)
 
     # Data that exceeds the upper bound is masked out
-    upper_bound = float(df['upper_bound'][output_name])
+    upper_bound = df['upper_bound'][output_name]
     if upper_bound is None:
         ub_mask = np.zeros_like(mask)
     else:
-        ub_mask = data > upper_bound
+        ub_mask = data > float(upper_bound)
 
     # Update the mask
     mask = np.logical_or(mask, ub_mask)
