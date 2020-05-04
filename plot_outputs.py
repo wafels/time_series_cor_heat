@@ -16,6 +16,34 @@ print('Reading ' + filepath)
 with open(filepath) as f:
     output_names = [line.rstrip() for line in f]
 
+
+class SummaryStatistics:
+    """Some simple descriptive statistics of a 1-D input array"""
+    def __init__(self, data, ci=[0.68, 0.95], **kwargs):
+        self.n = np.size(data)
+        self.n_finite = np.sum(np.isfinit(data))
+        self.n_not_finite = self.n - self.n_finite
+        self.max = np.nanmax(data)
+        self.min = np.nanmin(data)
+        self.mean = np.nanmean(data)
+        self.median = np.nanmedian(data)
+        self.hist, self.xhist = np.histogram(data, **kwargs)
+        self.x = 0.5 * (self.xhist[0:-2] + self.xhist[1:-1])
+        self.mode = self.xhist[np.argmax(self.hist)]
+        self.std = np.nanstd(data)
+        self.cred = {}
+        for cilevel in ci:
+            lo = 0.5 * (1.0 - cilevel)
+            hi = 1.0 - lo
+            sorted_data = np.sort(data)
+            self.cred[cilevel] = [sorted_data[np.rint(lo * self.n)],
+                                  sorted_data[np.rint(hi * self.n)]]
+
+    @property
+    def is_all_finite(self):
+        return self.n == self.n_finite
+
+
 for i, output_name in enumerate(output_names):
     data = outputs[:, :, i]
     nsamples = data.size
