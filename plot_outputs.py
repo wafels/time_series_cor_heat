@@ -3,9 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib import rc
-rc('text', usetex=True)
+rc('text', usetex=True)  # Use LaTeX
+
+# Which model to look at
 observation_model_name = 'pl_c'
 
+# Number of equally spaced bins in the histogram
+bins = 50
+
+# Location of the data we are analyzing
 directory = os.path.expanduser('~/Data/ts/project_data/test_dask2_output')
 
 # Load in some information about how to treat and plot the outputs, for example
@@ -95,7 +101,7 @@ for i, output_name in enumerate(output_names):
     n_bad = n_samples - n_good
 
     # Summary statistics
-    ss = SummaryStatistics(compressed, bins=40, ci=(0.16, 0.84, 0.025, 0.975))
+    ss = SummaryStatistics(compressed, bins=bins, ci=(0.16, 0.84, 0.025, 0.975))
 
     # The variable name is used in the plot instead of the output_name
     # because we use LaTeX in the plots to match with the variables
@@ -111,7 +117,7 @@ for i, output_name in enumerate(output_names):
     # Histograms
     plt.close('all')
     fig, ax = plt.subplots()
-    h = ax.hist(compressed, bins=40)
+    h = ax.hist(compressed, bins=bins)
     plt.xlabel(variable_name)
     plt.ylabel('number')
     plt.title(f'histogram of {title_information}')
