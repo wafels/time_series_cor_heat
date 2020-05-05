@@ -11,6 +11,9 @@ observation_model_name = 'pl_c'
 # Number of equally spaced bins in the histogram
 bins = 50
 
+# Colour for bad fits in the spatial distribution
+bad_color = 'red'
+
 # Location of the data we are analyzing
 directory = os.path.expanduser('~/Data/ts/project_data/test_dask2_output')
 
@@ -137,10 +140,11 @@ for i, output_name in enumerate(output_names):
     plt.savefig(filename)
 
     # Spatial distribution
+    title_information = f"{variable_name}\n{n_samples} fits, {n_bad} bad (in {bad_color}), {n_good} good, {percent_bad_string} bad"
     plt.close('all')
     fig, ax = plt.subplots()
     im = ax.imshow(data, origin='lower')
-    im.cmap.set_bad('red')
+    im.cmap.set_bad(bad_color)
     ax.set_xlabel('solar X')
     ax.set_ylabel('solar Y')
     ax.set_title(f'spatial distribution of {title_information}')
