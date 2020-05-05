@@ -55,8 +55,9 @@ class SummaryStatistics:
         self.x = 0.5 * (self.xhist[0:-2] + self.xhist[1:-1])
         self.mode = self.xhist[np.argmax(self.hist)]
         self.std = np.nanstd(self.data)
+        self.ci = ci
         self.cred = []
-        for cilevel in ci:
+        for cilevel in self.ci:
             self.cred.append(np.nanquantile(self.data, cilevel))
 
     @property
@@ -114,8 +115,16 @@ for i, output_name in enumerate(output_names):
     # Percentage that are bad fits
     percent_bad_string = "{:.1f}$\%$".format(100*n_bad/n_samples)
 
-    # Information that goes in to every title
+    # Information that goes in to the histogram title
     title_information = f"{variable_name}\n{n_samples} fits, {n_bad} bad, {n_good} good, {percent_bad_string} bad"
+
+    # Credible interval strings
+    ci_a = "{:.1f}$\%$".format(100*ss.ci[0])
+    ci_b = "{:.1f}$\%$".format(100*ss.ci[1])
+    ci_c = "{:.1f}$\%$".format(100*ss.ci[2])
+    ci_d = "{:.1f}$\%$".format(100*ss.ci[3])
+    ci_1 = 'C.I. {:s}$\\rightarrow${:s} ({:.2f}$\\rightarrow${:.2f})'.format(ci_a, ci_b, ss.cred[0], ss.cred[1])
+    ci_2 = 'C.I. {:s}$\\rightarrow${:s} ({:.2f}$\\rightarrow${:.2f})'.format(ci_c, ci_d, ss.cred[2], ss.cred[3])
 
     # Histograms
     plt.close('all')
@@ -129,11 +138,9 @@ for i, output_name in enumerate(output_names):
     ax.axvline(ss.mode, label='mode ({:.2f})'.format(ss.mode), color='k')
     ax.axvline(ss.median, label='median ({:.2f})'.format(ss.median), color='y')
     ax.axvline(ss.cred[0], color='r', linestyle=':')
-    ax.axvline(ss.cred[1], label='$\pm1\sigma$ equiv. ({:.2f}$\\rightarrow${:.2f})'.format(ss.cred[0], ss.cred[1]),
-               color='r', linestyle=':')
+    ax.axvline(ss.cred[1], label=ci_1, color='r', linestyle=':')
     ax.axvline(ss.cred[2], color='k', linestyle=':')
-    ax.axvline(ss.cred[3], label='$\pm2\sigma$ equiv. ({:.2f}$\\rightarrow${:.2f})'.format(ss.cred[2], ss.cred[3]),
-               color='k', linestyle=':')
+    ax.axvline(ss.cred[3], label=ci_2, color='k', linestyle=':')
     ax.legend()
     filename = 'histogram.{:s}.{:s}.png'.format(observation_model_name, output_name)
     filename = os.path.join(directory, filename)
