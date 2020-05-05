@@ -95,7 +95,7 @@ for i, output_name in enumerate(output_names):
     n_bad = n_samples - n_good
 
     # Summary statistics
-    ss = SummaryStatistics(compressed, bins=40)
+    ss = SummaryStatistics(compressed, bins=40, ci=(0.16, 0.84, 0.025, 0.975))
 
     # The variable name is used in the plot instead of the output_name
     # because we use LaTeX in the plots to match with the variables
@@ -122,6 +122,9 @@ for i, output_name in enumerate(output_names):
     ax.axvline(ss.cred[0], color='r', linestyle=':')
     ax.axvline(ss.cred[1], label='$\pm1\sigma$ equiv. ({:.2f}$\\rightarrow${:.2f})'.format(ss.cred[0], ss.cred[1]),
                color='r', linestyle=':')
+    ax.axvline(ss.cred[2], color='k', linestyle=':')
+    ax.axvline(ss.cred[3], label='$\pm2\sigma$ equiv. ({:.2f}$\\rightarrow${:.2f})'.format(ss.cred[2], ss.cred[3]),
+               color='k', linestyle=':')
     ax.legend()
     filename = 'histogram.{:s}.{:s}.png'.format(observation_model_name, output_name)
     filename = os.path.join(directory, filename)
