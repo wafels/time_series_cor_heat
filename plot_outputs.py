@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib import rc
+from tools import SummaryStatistics
 rc('text', usetex=True)  # Use LaTeX
 
 # Which model to look at
@@ -35,34 +36,6 @@ filename = '{:s}.output_names.txt'.format(observation_model_name)
 filepath = os.path.join(directory, filename)
 with open(filepath) as f:
     output_names = [line.rstrip() for line in f]
-
-
-class SummaryStatistics:
-    """Some simple descriptive statistics of a 1-D input array"""
-    def __init__(self, d, ci=(0.16, 0.84), **histogram_kwargs):
-        # Only work with unmasked data.
-        if np.ma.is_masked(d):
-            raise ValueError('Unmasked data only')
-        self.data = d
-        self.n = np.size(self.data)
-        self.n_finite = np.sum(np.isfinite(self.data))
-        self.n_not_finite = self.n - self.n_finite
-        self.max = np.nanmax(self.data)
-        self.min = np.nanmin(self.data)
-        self.mean = np.nanmean(self.data)
-        self.median = np.nanmedian(self.data)
-        self.hist, self.xhist = np.histogram(self.data, **histogram_kwargs)
-        self.x = 0.5 * (self.xhist[0:-2] + self.xhist[1:-1])
-        self.mode = self.xhist[np.argmax(self.hist)]
-        self.std = np.nanstd(self.data)
-        self.ci = ci
-        self.cred = []
-        for cilevel in self.ci:
-            self.cred.append(np.nanquantile(self.data, cilevel))
-
-    @property
-    def is_all_finite(self):
-        return self.n == self.n_finite
 
 
 # Calculate a mask.  The mask eliminates results that we do not wish to consider,
@@ -99,13 +72,13 @@ for i, output_name in enumerate(output_names):
     # Total number of fits, including bad ones
     n_samples = data.size
 
-    # Compressed
+    # Compressed data and the number of good and bad fits
     compressed = data.flatten().compressed()
     n_good = compressed.size
     n_bad = n_samples - n_good
 
     # Summary statistics
-    ss = SummaryStatistics(compressed, bins=bins, ci=(0.16, 0.84, 0.025, 0.975))
+    ss = SummaryStatistics(compressed, ci=(0.16, 0.84, 0.025, 0.975), bins=bins)
 
     # The variable name is used in the plot instead of the output_name
     # because we use LaTeX in the plots to match with the variables
