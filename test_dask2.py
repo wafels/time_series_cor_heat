@@ -74,7 +74,7 @@ true_parameters = [amplitude, alpha, white_noise]
 
 
 # Create a list of simulated Fourier powers
-def create_simulated_data(nx, ny, observation_model, model_parameters, frequencies):
+def create_simulated_power_spectra(nx, ny, observation_model, model_parameters, frequencies):
     p = []
     for i in range(0, nx):
         this_alpha = model_parameters[1][i]
@@ -91,7 +91,7 @@ def create_simulated_data(nx, ny, observation_model, model_parameters, frequenci
     return p
 
 
-powers = create_simulated_data(nx, ny, observation_models[0], true_parameters, freq)
+powers = create_simulated_power_spectra(nx, ny, observation_models[0], true_parameters, freq)
 
 
 def dask_fit_fourier_pl_c(powers):
