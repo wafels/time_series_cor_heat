@@ -113,7 +113,7 @@ class InitialParameterEstimatePlC(object):
                                                     bayes_search[0], bayes_search[1])
 
         # Use the low-frequency end to estimate the amplitude, normalizing for the first frequency
-        self._amplitude = np.mean(self.p[self._ar[0]:self._ar[1]]) * (self.f[0] ** -self._index)
+        self._amplitude = np.mean(self.p[self._ar[0]:self._ar[1]]) * (self.f[0] ** self._index)
 
         # Use the high frequency part of the spectrum to estimate the constant value.
         self._background = np.exp(np.mean(np.log(self.p[self._br[0]:self._br[1]])))
