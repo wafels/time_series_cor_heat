@@ -12,7 +12,7 @@ from astropy.time import Time
 from astropy.modeling import models
 from astropy.modeling.fitting import _fitter_to_model_params
 from spectral_models import LogLorentz1D
-from spectral_model_parameter_estimators import power_law_index_bounds, InitialParameterEstimatePlC
+from spectral_model_parameter_estimators import InitialParameterEstimatePlC
 
 # Output
 directory = os.path.expanduser('~/Data/ts/project_data/test_dask2_output')
@@ -21,61 +21,70 @@ if not os.path.exists(directory):
 
 # Power law component
 power_law = models.PowerLaw1D()
+power_law.amplitude.min = 0.0
+power_law.amplitude.max = None
+power_law.alpha.min = 0.0
+power_law.alpha.max = 4.0
 
 # fix x_0 of power law component
 power_law.x_0.fixed = True
 
 # Constant component
 constant = models.Const1D()
+constant.amplitude.min = 0.0
+constant.amplitude.max = None
 
 # Lorentz component
-log_lorentz = LogLorentz1D()
-log_lorentz.name = 'log_lorentz'
+#log_lorentz = LogLorentz1D()
+#log_lorentz.name = 'log_lorentz'
 
-# All the models
-observation_models = list()
+# Create the model
+observation_model = power_law + constant
+observation_model.name = 'pl_c'
 
-observation_models.append(power_law + constant)
-observation_models[0].name = 'pl_c'
-
-observation_models.append(power_law + constant + log_lorentz)
-observation_models[1].name = 'pl_c_ll'
+#observation_models.append(power_law + constant + log_lorentz)
+#observation_models[1].name = 'pl_c_ll'
 
 #observation_models.append(power_law + constant + log_normal)
 #observation_models[2].name = 'pl_c_ln'
 
 
+# Get some properties of the model
+param_names = observation_model.param_names
+fixed = observation_model.fixed
+bounds = []
+for param_name in param_names:
+    if not fixed[param_name]:
+        bounds.append((observation_model.bounds[param_name]))
+scipy_optimize_options = {"bounds": bounds}
+
 #############################
 # Load in some power spectra
-
-
 #############################
 # Make some simulated data
-freq = np.linspace(0.01, 10.0, int(10.0/0.01))
+# Based on the Bradshaw & Viall data
+df = 0.000196078431372549 - 9.80392156862745e-05
+freq = 9.80392156862745e-05 + df * np.arange(424)
 
 # Size of the array
-nx = 50
-ny = 60
+nx = 30
+ny = 35
 
 # Power law
 alpha = np.linspace(2, 2, nx)
-amplitude = 5.0
+amplitude = 2923968935.189489
+amplitude = 1.0
 
 # Constant
-white_noise = 2.0
-
-# Log Lorentz
-ll_amplitude = 1000.0
-ll_log_x_0 = np.log(1.0)
-ll_fwhm = np.log(1.01)
+white_noise = 200 / 2923968935.189489
 
 # True parameters
 true_parameters = [amplitude, alpha, white_noise]
 
 
-# Create a list of simulated Fourier powers
+# Create an array of simulated Fourier powers
 def create_simulated_power_spectra(nx, ny, observation_model, model_parameters, frequencies):
-    p = []
+    d = np.zeros([nx, ny, len(frequencies)])
     for i in range(0, nx):
         this_alpha = model_parameters[1][i]
         for j in range(0, ny):
@@ -87,20 +96,28 @@ def create_simulated_power_spectra(nx, ny, observation_model, model_parameters, 
             psd_shape = observation_model(frequencies)
 
             # Now randomize the true data and store it in an iterable
-            p.append(psd_shape * np.random.chisquare(2, size=psd_shape.shape[0]) / 2.0)
-    return p
+            d[i, j, :] = psd_shape * np.random.chisquare(2, size=psd_shape.shape[0]) / 2.0
+    return d
 
 
-powers = create_simulated_power_spectra(nx, ny, observation_models[0], true_parameters, freq)
+# Create an array of data similar to that from loading in from an array
+data = create_simulated_power_spectra(nx, ny, observation_model, true_parameters, freq)
 
 
-def dask_fit_fourier_pl_c(powers):
+# Create a list of powers as accepted by the dask processor
+powers = []
+for i in range(0, nx):
+    for j in range(0, ny):
+        powers.append((freq, data[i, j, :]))
+
+
+def dask_fit_fourier_pl_c(power_spectrum):
     """
     Fits the power law + constant observation model
 
     Parameters
     ----------
-    powers :
+    power_spectrum :
 
     Return
     ------
@@ -109,25 +126,23 @@ def dask_fit_fourier_pl_c(powers):
 
     # Make the random data into a Powerspectrum object
     ps = Powerspectrum()
-    ps.freq = freq
-    ps.power = powers
+    ps.freq = power_spectrum[0]
+    ps.power = power_spectrum[1]
     ps.df = ps.freq[1] - ps.freq[0]
     ps.m = 1
 
     # Define the log-likelihood of the data given the model
-    loglike = PSDLogLikelihood(ps.freq, ps.power, observation_models[0], m=ps.m)
-
+    loglike = PSDLogLikelihood(ps.freq, ps.power, observation_model, m=ps.m)
     # Parameter estimation object
     parameter_estimate = PSDParEst(ps, fitmethod="L-BFGS-B", max_post=False)
 
     # Estimate the starting parameters
     ipe = InitialParameterEstimatePlC(ps.freq, ps.power)
-    return parameter_estimate.fit(loglike, [ipe.amplitude, ipe.index, ipe.background])
+    return parameter_estimate.fit(loglike, [ipe.amplitude, ipe.index, ipe.background],
+                                  scipy_optimize_options=scipy_optimize_options)
 
 
 # TODO: Create plots of the output
-# TODO: 1. Histograms of values
-# TODO: 2. Spatial maps of values
 # TODO: 3. Scatter plots of one value versus another
 if __name__ == '__main__':
 
@@ -135,8 +150,8 @@ if __name__ == '__main__':
     client = distributed.Client()
     print('Dask processing of {:n} spectra'.format(nx*ny))
 
-    #
-    observation_model_name = observation_models[0].name
+    # Name of the model we are considering
+    observation_model_name = observation_model.name
 
     # Get the start time
     t_start = Time.now()
@@ -160,6 +175,7 @@ if __name__ == '__main__':
     n_parameters = len(z[0].p_opt)
     n_outputs = 2 * n_parameters + 3
     outputs = np.zeros((nx, ny, n_outputs))
+    mfits = np.zeros_like(data)
 
     # Turn the results into an easier to use array
     for i in range(0, nx):
@@ -172,6 +188,8 @@ if __name__ == '__main__':
             outputs[i, j, 2 * n_parameters + 1] = r.bic
             outputs[i, j, 2 * n_parameters + 2] = r.result
 
+            mfits[i, j, :] = r.mfit[:]
+
     filename = '{:s}.outputs.npz'.format(observation_model_name)
     filepath = os.path.join(directory, filename)
     print('Saving ' + filepath)
@@ -179,8 +197,6 @@ if __name__ == '__main__':
 
     # Create a list the names of the output in the same order that they appear in the outputs
     output_names = list()
-    param_names = observation_models[0].param_names
-    fixed = observation_models[0].fixed
     for name in param_names:
         if not fixed[name]:
             output_names.append(name)
@@ -191,12 +207,22 @@ if __name__ == '__main__':
     output_names.append('bic')
     output_names.append('result')
 
-    filename = '{:s}.output_names.txt'.format(observation_model_name)
+    filename = '{:s}.names.txt'.format(observation_model_name)
     filepath = os.path.join(directory, filename)
     print('Saving ' + filepath)
     with open(filepath, 'w') as file_out:
         for output_name in output_names:
             file_out.write(f"{output_name}\n")
+
+    filename = '{:s}.mfits.npz'.format(observation_model_name)
+    filepath = os.path.join(directory, filename)
+    print('Saving ' + filepath)
+    np.savez(filepath, freq, mfits)
+
+    filename = '{:s}.data.npz'.format(observation_model_name)
+    filepath = os.path.join(directory, filename)
+    print('Saving ' + filepath)
+    np.savez(filepath, freq, data)
 
 
 """"
