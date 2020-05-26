@@ -27,15 +27,26 @@ filepath = os.path.join(os.path.expanduser('~/time_series_cor_heat-git/time_seri
 df = pd.read_csv(filepath, index_col=0)
 df = df.replace({"None": None})
 
-# Load in the data and the output names 
+# Load in the fit paramaters and the output names
 filename = '{:s}.outputs.npz'.format(observation_model_name)
 filepath = os.path.join(directory, filename)
 outputs = np.load(filepath)['arr_0']
 
-filename = '{:s}.output_names.txt'.format(observation_model_name)
+filename = '{:s}.names.txt'.format(observation_model_name)
 filepath = os.path.join(directory, filename)
 with open(filepath) as f:
     output_names = [line.rstrip() for line in f]
+
+# Load in the fits
+filename = '{:s}.mfits.npz'.format(observation_model_name)
+filepath = os.path.join(directory, filename)
+mfits = np.load(filepath)['arr_1']
+freq = np.load(filepath)['arr_0']
+
+# Load in the data
+filename = '{:s}.data.npz'.format(observation_model_name)
+filepath = os.path.join(directory, filename)
+powers = np.load(filepath)['arr_1']
 
 
 # Calculate a mask.  The mask eliminates results that we do not wish to consider,
@@ -133,3 +144,26 @@ for i, output_name in enumerate(output_names):
     filename = 'spatial.{:s}.{:s}.png'.format(observation_model_name, output_name)
     filename = os.path.join(directory, filename)
     plt.savefig(filename)
+
+nx_plot = 3
+ny_plot = 3
+nx = mfits.shape[0]
+ny = mfits.shape[1]
+fig, axs = plt.subplots(nx_plot, ny_plot)
+fig.figsize = (2*nx_plot, 2*ny_plot)
+for i in range(0, nx_plot):
+    for j in range(0, ny_plot):
+        ii = np.random.randint(0, nx)
+        jj = np.random.randint(0, ny)
+        while mask[ii, jj]:
+            ii = np.random.randint(0, nx)
+            jj = np.random.randint(0, ny)
+        axs[i, j].loglog(freq, powers[ii, jj, :])
+        axs[i, j].loglog(freq, mfits[ii, jj, :])
+        axs[i, j].set_title('{:n},{:n}'.format(ii, jj))
+        axs[i, j].grid('on', linestyle=':')
+
+fig.tight_layout()
+filename = 'sample_fits.{:s}.{:s}.png'.format(observation_model_name, output_name)
+filename = os.path.join(directory, filename)
+plt.savefig(filename)
